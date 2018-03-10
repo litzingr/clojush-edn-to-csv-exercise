@@ -52,10 +52,10 @@
 (defn print-semantics-to-csv
   [semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file {:keys [total-error errors uuid]}]
   (let [new-semantics-uuid (new-uuid)] (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics")
-    (doseq [each-uuid uuid] (safe-println individual-semantics-csv-file each-uuid semantic-uuid "HAS_SEMANTICS"))
+    (doseq [each-uuid uuid] (safe-println individual-semantics-csv-file each-uuid new-semantics-uuid "HAS_SEMANTICS")
     (doseq [[i thing] (map-indexed vector errors)]
       (let [error-uuid (new-uuid)] (safe-println errors-csv-file error-uuid thing i "Error")
-          (safe-println semantics-error-csv-file each-uuid error-uuid "HAS_ERROR")))
+          (safe-println semantics-error-csv-file each-uuid error-uuid "HAS_ERROR"))))
   )
   1)
 
