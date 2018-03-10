@@ -25,7 +25,8 @@
     (when (= t 'clojush/individual) v))
 
 
-(defn semantics-atom [] (atom {}))
+(def total-errors-atom (atom {})) ;;I guess we will just use this for our temporary holder
+
 ; I got this from http://yellerapp.com/posts/2014-12-11-14-race-condition-in-clojure-println.html
 ; It prints in a way that avoids weird interleaving of lines and items.
 ; In several ways it would be better to use a CSV library like
@@ -40,22 +41,28 @@
 ; fold together after we map this across the individuals; otherwise we'd
 ; just end up with a big list of nil's.)
 (defn print-individual-to-csv
-  [individual-csv-file parent-of-out-file {:keys [uuid generation location, parent-uuids, genetic-operators]}]
+  [individual-csv-file parent-of-out-file {:keys [uuid, generation, location, parent-uuids, genetic-operators, total-error, errors]}]
   (safe-println individual-csv-file uuid generation location "Individual")
-  (println parent-uuids)
-  (doseq [parent parent-uuids] (safe-println parent-of-out-file parent genetic-operators uuid "PARENT_OF"))
+  (doseq [parent parent-uuids] (safe-println parent-of-out-file parent genetic-operators uuid "PARENT_OF")
+  ; I don't like that this is how synchronisity works... Got help with this part...
+  (swap! total-errors-atom (partial merge-with into) {[total-error errors] [uuid]})
+  )
   1)
 
-  (defn build-csv-filename
-    [edn-filename strategy type]
-    (str (fs/parent edn-filename)
-         "/"
-         (fs/base-name edn-filename ".edn")
-         (if strategy
-           (str "_" strategy)
-           "_sequential")
-         (str "_" type ".csv")))
+(defn print-semantics-to-csv
+  [semantics-csv-file {:keys []}]
 
+  1)
+
+(defn build-csv-filename
+  [edn-filename strategy type]
+  (str (fs/parent edn-filename)
+      "/"
+      (fs/base-name edn-filename ".edn")
+      (if strategy
+      (str "_" strategy)
+      "_sequential")
+      (str "_" type ".csv")))
 
 (defn edn->csv-reducers [edn-file]
   (with-open [individuals-out-file (io/writer (build-csv-filename edn-file "reducers" "Individual"))
@@ -80,6 +87,7 @@
       ; totally kills the parallelism. :-(
       (r/filter identity)
       (r/map (partial print-individual-to-csv individuals-out-file parent-of-out-file))
+      (r/map (partial print-semantics-to-csv semantics-out-file))
       (r/fold +)
       )))
 
@@ -92,6 +100,7 @@
         ; "pmap" (edn->csv-pmap edn-filename individual-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file)
         "reducers" (edn->csv-reducers edn-filename)
         ; (edn->csv-sequential edn-filename individual-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file))))
+        (edn->csv-reducers edn-filename)
         ))
   ; Necessary to get threads spun up by `pmap` to shutdown so you get
   ; your prompt back right away when using `lein run`.
