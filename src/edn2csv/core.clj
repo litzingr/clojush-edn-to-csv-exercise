@@ -40,7 +40,7 @@
 ; (The counting isn't strictly necessary, but it gives us something to
 ; fold together after we map this across the individuals; otherwise we'd
 ; just end up with a big list of nil's.)
-(defn print-individual-to-csv
+(defn print-individual-and-parents-to-csv
   [individual-csv-file parent-of-csv-file {:keys [uuid, generation, location, parent-uuids, genetic-operators, total-error, errors]}]
   (safe-println individual-csv-file uuid generation location "Individual")
   (doseq [parent parent-uuids] (safe-println parent-of-csv-file parent genetic-operators uuid "PARENT_OF")
@@ -49,7 +49,7 @@
   )
   1)
 
-(defn print-semantics-to-csv
+(defn print-semantics-errors-and-edges-to-csv
   [semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file [[total-error errors] uuids]]
   (let [new-semantics-uuid (new-uuid)
         error-uid (new-uuid)]
@@ -87,11 +87,11 @@
       (iota/seq edn-file)
       (r/map (partial edn/read-string {:default individual-reader}))
       (r/filter identity)
-      (r/map (partial print-individual-to-csv individuals-csv-file parent-of-csv-file))
-      ; (r/map (partial print-semantics-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file))
+      (r/map (partial print-individual-and-parents-to-csv individuals-csv-file parent-of-csv-file))
+      ; (r/map (partial print-semantics-errors-and-edges-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file))
       (r/fold +))
       ; I couldn't figure out how to get this to use reducers...
-      (doall (pmap (partial print-semantics-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file) @atomic-errors))
+      (doall (pmap (partial print-semantics-errors-and-edges-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file) @atomic-errors))
       ))
 
 ;; I wanted to do all the strategies but I didn't end up having time to do so.
