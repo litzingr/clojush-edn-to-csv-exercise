@@ -38,11 +38,8 @@
 ; fold together after we map this across the individuals; otherwise we'd
 ; just end up with a big list of nil's.)
 (defn print-individual-to-csv
-  [csv-file line]
-  (as-> line $
-    (map $ [:uuid :generation :location])
-    (concat $ ["Individual"])
-    (apply safe-println csv-file $))
+  [individual-csv-file {:keys [uuid generation location]}]
+  (safe-println individual-csv-file uuid generation location "Individual")
   1)
 
 (defn edn->csv-sequential [edn-file individuals-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file]
