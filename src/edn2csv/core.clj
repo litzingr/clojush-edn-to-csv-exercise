@@ -50,8 +50,13 @@
   1)
 
 (defn print-semantics-to-csv
-  [semantics-csv-file {:keys [total-error errors uuid]}]
-  (let [new-semantics-uuid (new-uuid)] (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics"))
+  [semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file {:keys [total-error errors uuid]}]
+  (let [new-semantics-uuid (new-uuid)] (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics")
+    (doseq [each-uuid uuid] (safe-println individual-semantics-csv-file each-uuid semantic-uuid "HAS_SEMANTICS"))
+    (doseq [[i thing] (map-indexed vector errors)]
+      (let [error-uuid (new-uuid)] (safe-println errors-csv-file error-uuid thing i "Error")
+          (safe-println semantics-error-csv-file each-uuid error-uuid "HAS_ERROR")))
+  )
   1)
 
 (defn build-csv-filename
@@ -87,7 +92,7 @@
       ; totally kills the parallelism. :-(
       (r/filter identity)
       (r/map (partial print-individual-to-csv individuals-out-file parent-of-out-file))
-      (r/map (partial print-semantics-to-csv semantics-out-file))
+      (r/map (partial print-semantics-to-csv semantics-out-file errors-out-file individual-semantics-out-file semantics-error-out-file))
       (r/fold +)
       )))
 
