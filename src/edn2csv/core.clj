@@ -50,8 +50,8 @@
   1)
 
 (defn print-semantics-to-csv
-  [semantics-csv-file {:keys []}]
-
+  [semantics-csv-file {:keys [total-error errors uuid]}]
+  (let [new-semantics-uuid (new-uuid)] (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics"))
   1)
 
 (defn build-csv-filename
