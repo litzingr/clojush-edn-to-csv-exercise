@@ -25,7 +25,7 @@
     (when (= t 'clojush/individual) v))
 
 
-(def total-errors-atom (atom {})) ;;I guess we will just use this for our temporary holder
+(def atomic-errors (atom {})) ;;I guess we will just use this for our atomic holder
 
 ; I got this from http://yellerapp.com/posts/2014-12-11-14-race-condition-in-clojure-println.html
 ; It prints in a way that avoids weird interleaving of lines and items.
@@ -41,23 +41,24 @@
 ; fold together after we map this across the individuals; otherwise we'd
 ; just end up with a big list of nil's.)
 (defn print-individual-to-csv
-  [individual-csv-file parent-of-out-file {:keys [uuid, generation, location, parent-uuids, genetic-operators, total-error, errors]}]
+  [individual-csv-file parent-of-csv-file {:keys [uuid, generation, location, parent-uuids, genetic-operators, total-error, errors]}]
   (safe-println individual-csv-file uuid generation location "Individual")
-  (doseq [parent parent-uuids] (safe-println parent-of-out-file parent genetic-operators uuid "PARENT_OF")
+  (doseq [parent parent-uuids] (safe-println parent-of-csv-file parent genetic-operators uuid "PARENT_OF")
   ; I don't like that this is how synchronisity works... Got help with this part...
-  (swap! total-errors-atom (partial merge-with into) {[total-error errors] [uuid]})
+  (swap! atomic-errors (partial merge-with into) {[total-error errors] [uuid]})
   )
   1)
 
 (defn print-semantics-to-csv
-  [semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file {:keys [total-error errors uuid]}]
-  (let [new-semantics-uuid (new-uuid)] (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics")
-    (doseq [each-uuid uuid] (safe-println individual-semantics-csv-file each-uuid new-semantics-uuid "HAS_SEMANTICS")
-    (doseq [[i thing] (map-indexed vector errors)]
-      (let [error-uuid (new-uuid)] (safe-println errors-csv-file error-uuid thing i "Error")
-          (safe-println semantics-error-csv-file each-uuid error-uuid "HAS_ERROR"))))
-  )
-  1)
+  [semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file [[total-error errors] uuids]]
+  (let [new-semantics-uuid (new-uuid)
+        error-uid (new-uuid)]
+      (safe-println semantics-error-csv-file new-semantics-uuid error-uid "HAS_ERROR")
+      (safe-println semantics-csv-file new-semantics-uuid total-error "Semantics")
+      (doseq [[idx itm] (map-indexed (fn [idx itm] [idx itm]) errors)] (safe-println errors-csv-file error-uid itm idx "Error"))
+      (doseq [old-uuid uuids] (safe-println individual-semantics-csv-file old-uuid new-semantics-uuid "HAS_SEMANTICS"))
+
+  ))
 
 (defn build-csv-filename
   [edn-filename strategy type]
@@ -70,43 +71,37 @@
       (str "_" type ".csv")))
 
 (defn edn->csv-reducers [edn-file]
-  (with-open [individuals-out-file (io/writer (build-csv-filename edn-file "reducers" "Individual"))
-              semantics-out-file (io/writer (build-csv-filename edn-file "reducers" "Semantics"))
-              errors-out-file (io/writer (build-csv-filename edn-file "reducers" "Errors"))
-              parent-of-out-file (io/writer (build-csv-filename edn-file "reducers" "ParentOf_edges"))
-              individual-semantics-out-file (io/writer (build-csv-filename edn-file "reducers" "Individual_Semantics_edges"))
-              semantics-error-out-file (io/writer (build-csv-filename edn-file "reducers" "Semantics_Error_edges"))]
-    (safe-println individuals-out-file individuals-header-line)
-    (safe-println semantics-out-file semantics-header-line)
-    (safe-println errors-out-file errors-header-line)
-    (safe-println parent-of-out-file parent-of-header-line)
-    (safe-println individual-semantics-out-file individual-semantics-header-line)
-    (safe-println semantics-error-out-file semantics-error-header-line)
+  (with-open [individuals-csv-file (io/writer (build-csv-filename edn-file "reducers" "Individual"))
+              semantics-csv-file (io/writer (build-csv-filename edn-file "reducers" "Semantics"))
+              errors-csv-file (io/writer (build-csv-filename edn-file "reducers" "Errors"))
+              parent-of-csv-file (io/writer (build-csv-filename edn-file "reducers" "ParentOf_edges"))
+              individual-semantics-csv-file (io/writer (build-csv-filename edn-file "reducers" "Individual_Semantics_edges"))
+              semantics-error-csv-file (io/writer (build-csv-filename edn-file "reducers" "Semantics_Error_edges"))]
+    (safe-println individuals-csv-file individuals-header-line)
+    (safe-println semantics-csv-file semantics-header-line)
+    (safe-println errors-csv-file errors-header-line)
+    (safe-println parent-of-csv-file parent-of-header-line)
+    (safe-println individual-semantics-csv-file individual-semantics-header-line)
+    (safe-println semantics-error-csv-file semantics-error-header-line)
     (->>
       (iota/seq edn-file)
       (r/map (partial edn/read-string {:default individual-reader}))
-      ; This eliminates empty (nil) lines, which result whenever
-      ; a line isn't a 'clojush/individual. That only happens on
-      ; the first line, which is a 'clojush/run, but we still need
-      ; to catch it. We could do that with `r/drop`, but that
-      ; totally kills the parallelism. :-(
       (r/filter identity)
-      (r/map (partial print-individual-to-csv individuals-out-file parent-of-out-file))
-      (r/map (partial print-semantics-to-csv semantics-out-file errors-out-file individual-semantics-out-file semantics-error-out-file))
-      (r/fold +)
-      )))
+      (r/map (partial print-individual-to-csv individuals-csv-file parent-of-csv-file))
+      ; (r/map (partial print-semantics-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file))
+      (r/fold +))
+      ; I couldn't figure out how to get this to use reducers...
+      (doall (pmap (partial print-semantics-to-csv semantics-csv-file errors-csv-file individual-semantics-csv-file semantics-error-csv-file) @atomic-errors))
+      ))
+
+;; I wanted to do all the strategies but I didn't end up having time to do so.
 
 
 (defn -main
   [edn-filename & [strategy]]
     (time
-      (condp = strategy
-        ; "sequential" (edn->csv-sequential edn-filename individual-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file)
-        ; "pmap" (edn->csv-pmap edn-filename individual-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file)
-        "reducers" (edn->csv-reducers edn-filename)
-        ; (edn->csv-sequential edn-filename individual-csv-file semantics-csv-file errors-csv-file parent-of-csv-file individual-semantics-csv-file semantics-error-csv-file))))
         (edn->csv-reducers edn-filename)
-        ))
+        )
   ; Necessary to get threads spun up by `pmap` to shutdown so you get
   ; your prompt back right away when using `lein run`.
   (shutdown-agents))
